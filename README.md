@@ -7,6 +7,13 @@ The code demonstrates the usage of the `psycopg2` library to interact with a Pos
 Before running the code, ensure that the following prerequisites are met:
 - PostgreSQL database is installed and running.
 - `psycopg2` library is installed. You can install it using `pip install psycopg2`.
+- wheel error, download missing dependencies:
+```
+pip install cmake
+sudo apt-get install gcc libpq-dev -y
+sudo apt-get install python-dev  python-pip -y
+sudo apt-get install python3-dev python3-pip python3-venv python3-wheel -y
+```
 
 ## Configuration
 
