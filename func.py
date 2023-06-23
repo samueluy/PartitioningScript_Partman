@@ -1,9 +1,9 @@
-# creates a new table named new_table by replicating the structure of source_table
 import psycopg2
 from psycopg2 import sql
 
 
 def replicate_table(conn, source_table, new_table, partition_column):
+    print("Replicating table: " + source_table + "...")
     try:
         cur = conn.cursor()  # creating a cursor
         cur.execute(
@@ -23,10 +23,12 @@ def replicate_table(conn, source_table, new_table, partition_column):
         print("Success replicating table")
     except Exception as e:
         print("Error replicating table structure: ", e)
+        conn.rollback()
 
 
 # replicates the data from source_table to new_table
 def dump_data(conn, source_table, new_table):
+    print("Dumping data from: " + source_table + " to: " + new_table + "...")
     try:
         cur = conn.cursor()  # creating a cursor
         cur.execute(
@@ -42,9 +44,11 @@ def dump_data(conn, source_table, new_table):
         print("Success dumping data")
     except Exception as e:
         print("Error dumping data: ", e)
+        conn.rollback()
 
 
 def create_parent(conn, parent_table, control, interval, premake, start_partition):
+    print("Creating parent...")
     try:
         cur = conn.cursor()  # creating a cursor
         cur.execute(
@@ -72,9 +76,10 @@ def create_parent(conn, parent_table, control, interval, premake, start_partitio
 
     except Exception as e:
         print("Error creating parent: ", e)
-
+        conn.rollback()
 
 def rename_table(conn, source_table, new_name):
+    print("Renaming " + source_table + " to: " + new_name + "...")
     try:
         cur = conn.cursor()  # creating a cursor
         cur.execute(
@@ -89,9 +94,11 @@ def rename_table(conn, source_table, new_name):
         print("Success renaming table")
     except Exception as e:
         print("Error renaming table: ", e)
+        conn.rollback()
 
 
 def drop_table(conn, source_table):
+    print("Dropping: " + source_table + "...")
     try:
         cur = conn.cursor()  # creating a cursor
         cur.execute(
@@ -105,6 +112,7 @@ def drop_table(conn, source_table):
         print("Success dropping table")
     except Exception as e:
         print("Error dropping table: ", e)
+        conn.rollback()
 
 
 def get_tables(conn):
@@ -120,12 +128,16 @@ def get_tables(conn):
 
     except Exception as e:
         print("Error retrieving tables: ", e)
+        conn.rollback()
 
 
 def partition(conn, source_table, partition_column, interval, premake, start_partition):
+    source_table = source_table.strip() # remove leading/trailing whitespace
     raw_name = source_table.split(".")[-1]  # split '.' to get name without schema
     raw_temp_name = raw_name + "_temp"
     temp_name = source_table + "_temp"
+    source_c13mos = source_table +"_c3mos"
+    source_h13mos = source_table + "_h13mos"
 
     rename_table(conn, source_table, raw_temp_name)
     replicate_table(
@@ -135,4 +147,10 @@ def partition(conn, source_table, partition_column, interval, premake, start_par
         conn, source_table, partition_column, interval, premake, start_partition
     )
     dump_data(conn, temp_name, source_table)
+
+    # Drop table dependencies
+    drop_table(conn, source_c13mos)
+    drop_table(conn, source_h13mos)
+
+    # Drop temp table (original)
     drop_table(conn, temp_name)

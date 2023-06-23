@@ -1,10 +1,9 @@
 import psycopg2
-from psycopg2 import sql
 from func import *
 
 DB_NAME = ""
 DB_USER = ""
-DB_PASS = ""
+DB_PASS = "!"
 DB_HOST = ""
 DB_PORT = ""
 
@@ -15,8 +14,14 @@ try:
     )
     print("Database connected successfully")
 
-    # def partition(conn, source_table, partition_column, interval, premake, start_partition)
+    # partition(conn, source_table, partition_column, interval, premake, start_partition)
+    try:
+        file = open('tables.txt', 'r')
+        for table in file.readlines():
+            partition(conn, table, 'created_date', 'monthly', 1, "now() - interval '16 months'")
+
+    except Exception as e:
+        print("Error opening file: ", file)
 
 except Exception as e:
-    print("Database not connected successfully")
-    print(e)
+    print("Database not connected successfully: ", e)
