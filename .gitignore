@@ -1,3 +1,4 @@
 .env
 tables.txt
+PartitioningScript.py
 __pycache__/

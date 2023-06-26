@@ -115,6 +115,26 @@ def drop_table(conn, source_table):
         conn.rollback()
 
 
+def alter_view(conn, source_table):
+    print("Altering view of: " + source_table + "...")
+    schema_name = source_table.split(".")[0] # get schema name
+    raw_name = source_table.split(".")[-1]  # split '.' to get name without schema
+    view_table = schema_name + ".vw_" + raw_name
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            sql.SQL(
+             """
+             ALTER VIEW {view_table}
+             SET FROM {source_table}
+            """
+            ).format(source_table=sql.SQL(source_table), view_table=sql.SQL(view_table))
+        )
+        conn.commit()
+    except Exception as e:  
+        print("Error altering view: ", e)
+        conn.rollback()
+
 def get_tables(conn):
     try:
         cur = conn.cursor()
@@ -130,6 +150,34 @@ def get_tables(conn):
         print("Error retrieving tables: ", e)
         conn.rollback()
 
+def get_dependencies(conn, source_table):
+    print("Getting dependencies of table " + source_table + ":")
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            sql.SQL(
+        """
+SELECT DISTINCT v.oid::regclass AS view
+FROM pg_depend AS d      -- objects that depend on the table
+   JOIN pg_rewrite AS r  -- rules depending on the table
+      ON r.oid = d.objid
+   JOIN pg_class AS v    -- views for the rules
+      ON v.oid = r.ev_class
+WHERE v.relkind = 'v'    -- only interested in views
+  AND d.classid = 'pg_rewrite'::regclass
+  AND d.refclassid = 'pg_class'::regclass
+  AND d.deptype = 'n'    -- normal dependency
+  AND d.refobjid = '{source_table}'::regclass;
+        """
+            ).format(source_table=sql.SQL(source_table))
+        )
+        for table in cur.fetchall():
+            print(table[0])
+
+    except Exception as e:
+        print("Error retrieving dependencies: ", e)
+        conn.rollback()
+
 
 def partition(conn, source_table, partition_column, interval, premake, start_partition):
     source_table = source_table.strip() # remove leading/trailing whitespace
@@ -139,18 +187,19 @@ def partition(conn, source_table, partition_column, interval, premake, start_par
     source_c13mos = source_table +"_c3mos"
     source_h13mos = source_table + "_h13mos"
 
-    rename_table(conn, source_table, raw_temp_name)
-    replicate_table(
-        conn, temp_name, source_table, partition_column
-    )  # replicate table structure with original table name
-    create_parent(
-        conn, source_table, partition_column, interval, premake, start_partition
-    )
-    dump_data(conn, temp_name, source_table)
+#     rename_table(conn, source_table, raw_temp_name)
+#     replicate_table(
+#         conn, temp_name, source_table, partition_column
+#     )  # replicate table structure with original table name
+#     create_parent(
+#         conn, source_table, partition_column, interval, premake, start_partition
+#     )
+#     dump_data(conn, temp_name, source_table)
+    get_dependencies(conn, temp_name)
+#    # alter_view(conn, source_table)
+#     # Drop table dependencies
+#     drop_table(conn, source_c13mos)
+#     drop_table(conn, source_h13mos)
 
-    # Drop table dependencies
-    drop_table(conn, source_c13mos)
-    drop_table(conn, source_h13mos)
-
-    # Drop temp table (original)
+#     # Drop temp table (original)
     drop_table(conn, temp_name)
