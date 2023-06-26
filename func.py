@@ -25,6 +25,25 @@ def replicate_table(conn, source_table, new_table, partition_column):
         print("Error replicating table structure: ", e)
         conn.rollback()
 
+def create_view(conn, view_definitions):
+    print("Here")
+    print("Creating views...")
+    try:
+        cur = conn.cursor()  # creating a cursor
+        for view_name, view_definition in view_definitions:
+            print("Creating: " + view_name + " | " + view_definition)
+            create_view_statement = "CREATE VIEW {view_name} AS {view_definition};"
+            cur.execute(sql.SQL(create_view_statement).format(
+                view_definition=sql.SQL(view_definition),
+                view_name=sql.SQL(view_name))
+            )
+
+        conn.commit()
+        print("Success creating view")
+    except Exception as e:
+        print("Error creating view: ", e)
+        conn.rollback()
+
 
 # replicates the data from source_table to new_table
 def dump_data(conn, source_table, new_table):
@@ -114,25 +133,44 @@ def drop_table(conn, source_table):
         print("Error dropping table: ", e)
         conn.rollback()
 
-
-def alter_view(conn, source_table):
-    print("Altering view of: " + source_table + "...")
-    schema_name = source_table.split(".")[0] # get schema name
-    raw_name = source_table.split(".")[-1]  # split '.' to get name without schema
-    view_table = schema_name + ".vw_" + raw_name
+def drop_views(conn, schema):
+    print("Dropping all views...")
     try:
-        cur = conn.cursor()
+        cur = conn.cursor() # creating a cursor
+        cur.execute(sql.SQL("""
+    SELECT 'DROP VIEW IF EXISTS ' || table_name || ';'
+    FROM information_schema.views
+    WHERE table_schema = '{schema}';
+    """).format(schema=sql.SQL(schema)))
+        
+        drop_statements = cur.fetchall()
+        for drop_statement in drop_statements:
+            print("Dropping: " + drop_statement[0])
+            cur.execute(drop_statement[0])
+
+    except Exception as e:
+        print("Error dropping views: ", e)
+
+
+
+def ret_view_def(conn, schema):
+    print("Retrieving view definitions...")
+    try:
+        cur = conn.cursor()  # creating a cursor
         cur.execute(
             sql.SQL(
-             """
-             ALTER VIEW {view_table}
-             SET FROM {source_table}
-            """
-            ).format(source_table=sql.SQL(source_table), view_table=sql.SQL(view_table))
+                """
+        SELECT table_name, view_definition
+        FROM information_schema.views
+        WHERE table_schema = '{schema}';
+        """
+            ).format(schema=sql.SQL(schema))
         )
+        view_definitions = cur.fetchall()
         conn.commit()
-    except Exception as e:  
-        print("Error altering view: ", e)
+        return view_definitions
+    except Exception as e:
+        print("Error dropping view: ", e)
         conn.rollback()
 
 def get_tables(conn):
@@ -152,6 +190,7 @@ def get_tables(conn):
 
 def get_dependencies(conn, source_table):
     print("Getting dependencies of table " + source_table + ":")
+    tables = []
     try:
         cur = conn.cursor()
         cur.execute(
@@ -173,11 +212,12 @@ WHERE v.relkind = 'v'    -- only interested in views
         )
         for table in cur.fetchall():
             print(table[0])
+            tables.append(table[0])
+        return tables
 
     except Exception as e:
         print("Error retrieving dependencies: ", e)
-        conn.rollback()
-
+        return tables
 
 def partition(conn, source_table, partition_column, interval, premake, start_partition):
     source_table = source_table.strip() # remove leading/trailing whitespace
@@ -196,10 +236,13 @@ def partition(conn, source_table, partition_column, interval, premake, start_par
 #     )
 #     dump_data(conn, temp_name, source_table)
     get_dependencies(conn, temp_name)
-#    # alter_view(conn, source_table)
+    view_definitions = ret_view_def(conn, 'rec')
+    drop_views(conn, 'rec')
+    create_view(conn, view_definitions)
+
 #     # Drop table dependencies
 #     drop_table(conn, source_c13mos)
 #     drop_table(conn, source_h13mos)
 
 #     # Drop temp table (original)
-    drop_table(conn, temp_name)
+    #drop_table(conn, temp_name)
