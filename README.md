@@ -1,12 +1,12 @@
-# Code Readme
-
-The code demonstrates the usage of the `psycopg2` library to interact with a PostgreSQL database. It includes functions to replicate table structure, dump data from one table to another, and create a parent table using the `partman` extension.
+The following code aims to automate table partitioning on a PostgreSQL database given a list of tables using psycopg.
 
 ## Prerequisites
 
 Before running the code, ensure that the following prerequisites are met:
 - PostgreSQL database is installed and running.
 - `psycopg2` library is installed. You can install it using `pip install psycopg2`.
+- clone `PartitioningScript_Partman` repository
+```git clone https://github.com/samueluy/PartitioningScript_Partman```
 - wheel error, download missing dependencies:
 ```
 pip install cmake
@@ -17,33 +17,112 @@ sudo apt-get install python3-dev python3-pip python3-venv python3-wheel -y
 
 ## Configuration
 
+### PartitioningScript.py
 The code requires the following configuration variables to be set before running:
-- `DB_NAME`: The name of the target database.
-- `DB_USER`: The username to connect to the database.
-- `DB_PASS`: The password for the database user.
-- `DB_HOST`: The host address of the database.
-- `DB_PORT`: The port number for the database.
+- `DB_NAME` (str): The name of the target database.
+- `DB_USER` (str): The username to connect to the database.
+- `DB_PASS` (str): The password for the database user.
+- `DB_HOST` (str): The host address of the database.
+- `DB_PORT` (str): The port number for the database.
+
+
+
+The `partition` function accepts the following parameters:
+- `conn` (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- `source_table` (str): The name of the source table that needs to be partitioned.
+- `partition_column` (str): The column of the `source_table` used for partitioning.
+- `interval` (str): The interval for partitioning. Valid values include "monthly", "weekly", "daily", etc.
+- `premake` (int): The number of partitions to create in advance.
+- `start_partition` (str): The starting date or timestamp for partitioning. It specifies the date from which the partitions should be created.
 
 Make sure to provide the correct values for these variables.
 
-## Functionality
+### tables.txt
+Add here the list of tables to be partitioned. Each line is a new table.
 
-The code provides the following functions:
+## Functions
 
-### 1. `replicate_table(conn, source_table, new_table, partition_column)`
+### `replicate_table()`
 
-This function creates a new table named `new_table` by replicating the structure of `source_table`. The `partition_column` parameter specifies the column used for partitioning the table. If successful, it prints "Success replicating table." Otherwise, it prints the encountered error.
+Replicates the structure of `source_table` to `new_table`.
 
-### 2. `dump_data(conn, source_table, new_table)`
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`source_table`** (str): The name of the source table.
+- **`new_table`** (str): The name of the new table.
+- **`partition_column`** (str): The column used for partitioning.
 
-This function replicates the data from `source_table` to `new_table`. It inserts all the records from the source table into the new table. If successful, it prints "Success dumping data." Otherwise, it prints the encountered error.
+### `create_view()`
 
-### 3. `create_parent(conn, parent_table, control, interval, premake, start_partition)`
+Creates views in the `view_definitions` list.
 
-This function creates a parent table using the `partman` extension. The `parent_table` parameter specifies the name of the parent table to be created. The `control` parameter specifies the name of the control table. The `interval` parameter determines the interval for automatic partition creation. The `premake` parameter specifies whether to create the partitions in advance. The `start_partition` parameter specifies the starting partition. If successful, it prints "Success creating parent." Otherwise, it prints the encountered error.
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`view_definitions`** (list): A list of tuples containing the view name and its definition.
 
-### Connecting to the Database
+### `dump_data()`
 
-The code connects to the PostgreSQL database using the provided configuration variables. If the connection is successful, it prints "Database connected successfully." Otherwise, it prints "Database not connected successfully" along with the encountered error.
+Dumps the data from `source_table` to `new_table`.
 
-Make sure to provide valid configuration values and handle any errors that may occur during the execution of the code.
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`source_table`** (str): The name of the source table.
+- **`new_table`** (str): The name of the new table.
+
+### `create_parent()`
+
+Creates a parent table for partitioning.
+
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`parent_table`** (str): The name of the parent table.
+- **`control`** (str): The control value.
+- **`interval`** (str): The interval.
+- **`premake`** (int): The number of partitions to create in advance.
+- **`start_partition`** (str): The starting partition.
+
+### `rename_table()`
+
+Renames `source_table` to `new_name`.
+
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`source_table`** (str): The name of the source table.
+- **`new_name`** (str): The new name for the table.
+
+### `drop_table()`
+
+Drops `source_table`.
+
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`source_table`** (str): The name of the table to drop.
+
+### `drop_table_cascade()`
+
+Drops `source_table` and all its dependencies.
+
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`source_table`** (str): The name of the table to drop.
+
+### `drop_views()`
+
+Drops all views in `schema`.
+
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`schema`** (str): The name of the schema.
+
+### `ret_view_def()`
+
+Returns the view definitions in `schema`.
+
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`schema`** (str): The name of the schema.
+
+### `get_tables()`
+
+Returns the tables in `schema`.
+
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`schema`** (str): The name of the schema.
+
+### `get_dependencies()`
+
+Returns the dependencies of `source_table`.
+
+- **`conn`** (psycopg2.extensions.connection): The connection object representing the connection to the PostgreSQL database.
+- **`source_table`** (str): The name of the source table.
