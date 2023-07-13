@@ -1,6 +1,6 @@
 import psycopg2
 from psycopg2 import sql
-
+import os
 
 def replicate_table(conn, source_table, new_table, partition_column):
     print("Replicating table: " + source_table + "...")
@@ -26,12 +26,11 @@ def replicate_table(conn, source_table, new_table, partition_column):
         conn.rollback()
 
 def create_view(conn, view_definitions):
-    print("Here")
     print("Creating views...")
     try:
         cur = conn.cursor()  # creating a cursor
         for view_name, view_definition in view_definitions:
-            print("Creating: " + view_name + " | " + view_definition)
+            print("Creating: " + view_name)
             create_view_statement = "CREATE VIEW {view_name} AS {view_definition};"
             cur.execute(sql.SQL(create_view_statement).format(
                 view_definition=sql.SQL(view_definition),
@@ -49,16 +48,28 @@ def create_view(conn, view_definitions):
 def dump_data(conn, source_table, new_table):
     print("Dumping data from: " + source_table + " to: " + new_table + "...")
     try:
-        cur = conn.cursor()  # creating a cursor
-        cur.execute(
-            sql.SQL(
-                """
-            INSERT INTO {new_table}
-            SELECT *
-            FROM {source_table};
-        """
-            ).format(new_table=sql.SQL(new_table), source_table=sql.SQL(source_table))
-        )
+        cur = conn.cursor()
+        batch_size = 10000
+        current_offset = 0
+        current_batch = 0
+        
+        # Get the total number of rows
+        cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(sql.SQL(source_table)))
+        total_rows = cur.fetchone()[0]
+        # Loop until all rows are processed
+        while current_offset < total_rows:
+            # Increment the current batch
+            current_batch += 1
+            
+            # Dump the current batch using the COPY command
+            copy_query = sql.SQL("COPY (SELECT * FROM {} OFFSET %s LIMIT %s) TO {}").format(
+                sql.SQL(source_table), sql.SQL(new_table)
+            )
+            cur.execute(copy_query, (current_offset, batch_size))
+            
+            # Increment the offset for the next batch
+            current_offset += batch_size
+        
         conn.commit()
         print("Success dumping data")
     except Exception as e:
@@ -133,23 +144,45 @@ def drop_table(conn, source_table):
         print("Error dropping table: ", e)
         conn.rollback()
 
+def drop_table_cascade(conn, source_table):
+    print("Dropping cascade: " + source_table + "...")
+    try:
+        cur = conn.cursor()  # creating a cursor
+        cur.execute(
+            sql.SQL(
+                """
+            DROP TABLE {source_table} CASCADE;
+        """
+            ).format(source_table=sql.SQL(source_table))
+        )
+        conn.commit()
+        print("Success dropping table")
+    except Exception as e:
+        print("Error dropping table: ", e)
+        conn.rollback()
+
 def drop_views(conn, schema):
     print("Dropping all views...")
     try:
         cur = conn.cursor() # creating a cursor
         cur.execute(sql.SQL("""
-    SELECT 'DROP VIEW IF EXISTS ' || table_name || ';'
+    SELECT 'DROP VIEW IF EXISTS {schema}.' || table_name || ' CASCADE;'
     FROM information_schema.views
     WHERE table_schema = '{schema}';
     """).format(schema=sql.SQL(schema)))
         
         drop_statements = cur.fetchall()
         for drop_statement in drop_statements:
-            print("Dropping: " + drop_statement[0])
-            cur.execute(drop_statement[0])
-
+            try:
+                print("Dropping: " + drop_statement[0])
+                cur.execute(sql.SQL(drop_statement[0]))
+                
+            except Exception as e:
+                print("Error dropping view:", e)
+        conn.commit()
     except Exception as e:
         print("Error dropping views: ", e)
+        conn.rollback()
 
 
 
@@ -220,29 +253,27 @@ WHERE v.relkind = 'v'    -- only interested in views
         return tables
 
 def partition(conn, source_table, partition_column, interval, premake, start_partition):
+    os.environ['PGOPTIONS'] = '-c statement_timeout=0'
     source_table = source_table.strip() # remove leading/trailing whitespace
     raw_name = source_table.split(".")[-1]  # split '.' to get name without schema
     raw_temp_name = raw_name + "_temp"
     temp_name = source_table + "_temp"
     source_c13mos = source_table +"_c3mos"
     source_h13mos = source_table + "_h13mos"
-
-#     rename_table(conn, source_table, raw_temp_name)
-#     replicate_table(
-#         conn, temp_name, source_table, partition_column
-#     )  # replicate table structure with original table name
-#     create_parent(
-#         conn, source_table, partition_column, interval, premake, start_partition
-#     )
-#     dump_data(conn, temp_name, source_table)
+    rename_table(conn, source_table, raw_temp_name)
+    replicate_table(
+        conn, temp_name, source_table, partition_column
+    )  # replicate table structure with original table name
+    create_parent(
+        conn, source_table, partition_column, interval, premake, start_partition
+    )
+    dump_data(conn, temp_name, source_table)
     get_dependencies(conn, temp_name)
     view_definitions = ret_view_def(conn, 'rec')
     drop_views(conn, 'rec')
+#   Drop table dependencies
+    drop_table_cascade(conn, source_c13mos)
+    drop_table_cascade(conn, source_h13mos)
+#   Drop temp table (original)
+    drop_table_cascade(conn, temp_name)
     create_view(conn, view_definitions)
-
-#     # Drop table dependencies
-#     drop_table(conn, source_c13mos)
-#     drop_table(conn, source_h13mos)
-
-#     # Drop temp table (original)
-    #drop_table(conn, temp_name)
